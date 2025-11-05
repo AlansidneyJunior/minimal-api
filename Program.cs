@@ -10,6 +10,7 @@ using minimal_api.Infraestrutura.Db;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddScoped<IAdministradorServico, AdministradorServico>();
+builder.Services.AddScoped<IVeiculoServico, VeiculoServico>();
 
 // Swagger (compatível com .NET 8)
 builder.Services.AddEndpointsApiExplorer();
@@ -43,7 +44,68 @@ app.MapPost("administrador/login", ([FromBody] LoginDTO loginDTO, IAdministrador
         return Results.Unauthorized();
     }
 });
+
+app.MapGet("administradores", (
+    int pagina,
+    string? email,
+    [FromServices] IAdministradorServico administradorServico
+) =>
+{
+    var administradores = administradorServico.Todos(pagina, email);
+    return Results.Ok(administradores);
+});
+
+app.MapGet("administradores/{id}", (int id, [FromServices] IAdministradorServico administradorServico) =>
+{
+    var administrador = administradorServico.BuscarPorId(id);
+    return administrador is not null ? Results.Ok(administrador) : Results.NotFound();
+});
+
+app.MapPost("administradores", (AdministradorDTO dto, [FromServices] IAdministradorServico administradorServico) =>
+{
+    if (string.IsNullOrWhiteSpace(dto.Email) ||
+        string.IsNullOrWhiteSpace(dto.Senha) ||
+        string.IsNullOrWhiteSpace(dto.Perfil))
+    {
+        return Results.BadRequest("Todos os campos (Email, Senha e Perfil) são obrigatórios.");
+    }
+
+    var administrador = new Administrador
+    {
+        Email = dto.Email,
+        Senha = dto.Senha,
+        Perfil = dto.Perfil
+    };
+
+    administradorServico.Incluir(administrador);
+    return Results.Created($"/administradores/{administrador.Id}", administrador);
+});
+
+app.MapPut("administradores/{id}", (int id, AdministradorDTO dto, [FromServices] IAdministradorServico administradorServico) =>
+{
+    var existente = administradorServico.BuscarPorId(id);
+    if (existente is null)
+        return Results.NotFound();
+
+    existente.Email = dto.Email;
+    existente.Senha = dto.Senha;
+    existente.Perfil = dto.Perfil;
+
+    administradorServico.Atualizar(existente);
+    return Results.Ok(existente);
+});
+
+app.MapDelete("administradores/{id}", (int id, [FromServices] IAdministradorServico administradorServico) =>
+{
+    var administrador = administradorServico.BuscarPorId(id);
+    if (administrador is null)
+        return Results.NotFound();
+
+    administradorServico.Remover(administrador);
+    return Results.NoContent();
+});
 #endregion
+
 
 #region Veiculos
 app.MapGet("veiculos", (
@@ -65,6 +127,13 @@ app.MapGet("veiculos/{id}", (int id,[FromServices] IVeiculoServico veiculoServic
 
 app.MapPost("veiculos", (VeiculoDTO dto,[FromServices] IVeiculoServico veiculoServico) =>
 {
+    if (string.IsNullOrWhiteSpace(dto.Nome) ||
+        string.IsNullOrWhiteSpace(dto.Marca) ||
+        dto.Ano <= 0)
+    {
+        return Results.BadRequest("Todos os campos (Nome, Marca e Ano) são obrigatórios.");
+    }
+
     var veiculo = new Veiculo
     {
         Nome = dto.Nome,
